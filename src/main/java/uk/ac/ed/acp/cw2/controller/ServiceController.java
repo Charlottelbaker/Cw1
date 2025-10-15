@@ -1,20 +1,17 @@
 package uk.ac.ed.acp.cw2.controller;
 
-import lombok.RequiredArgsConstructor;
-import uk.ac.ed.acp.cw2.DTO.*;
-
+import jakarta.validation.Valid;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.core.env.Environment;
 import org.springframework.http.ResponseEntity;
-import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.web.bind.annotation.*;
-import uk.ac.ed.acp.cw2.data.RuntimeEnvironment;
+import uk.ac.ed.acp.cw2.data.DTO.*;
+import uk.ac.ed.acp.cw2.service.BasicService;
+import uk.ac.ed.acp.cw2.service.BasicService.*;
 
 
 import java.net.URL;
-import java.time.Instant;
 
 /**
  * Controller class that handles various HTTP endpoints for the application.
@@ -56,67 +53,51 @@ public class ServiceController {
 //        return "Hello, "+studentName;
 //    }
 
-    private double calculateDistance(Position pos1, Position pos2) {
-        double dx = pos1.getLat() - pos2.getLat();
-        double dy = pos1.getLng() - pos2.getLng();
-        return Math.sqrt(dx * dx + dy * dy);
+    private final BasicService CalcDistanceService;
+
+    private final BasicService CalcCloseService;
+
+    private final BasicService CalcNextPosService;
+
+    private  final BasicService CalcInRegionService;
+
+    public ServiceController(BasicService Service) {
+        this.CalcDistanceService = Service;
+        this.CalcCloseService = Service;
+        this.CalcNextPosService = Service;
+        this.CalcInRegionService = Service;
+
     }
+
     @PostMapping("/distanceTo")
-    public ResponseEntity<?> distanceTo(@RequestBody DistanceRequest request) {
-    //request.getPosition1() and request.getPosition2() now hold the data
+    public double distanceTo(@Valid @RequestBody DistanceRequest request) {
         Position pos1 = request.getPosition1();
         Position pos2 = request.getPosition2();
-        if (!pos1.isValid()){ResponseEntity.badRequest().body("Invalid Position data");}
-        if (!pos2.isValid()){ResponseEntity.badRequest().body("Invalid Position data");}
-
-
-        double distance = calculateDistance(pos1, pos2);
-
-        {
-            return ResponseEntity.ok(distance);
-        }
+        return CalcDistanceService.calculateDistance(pos1, pos2);
 
     }
 
     //return true if the two positions are close (< 0.00015), otherwise false.
     @PostMapping("/isCloseTo")
-    public ResponseEntity<?> isCloseTo (@RequestBody DistanceRequest request) {
+    public Boolean isCloseTo (@Valid @RequestBody DistanceRequest request) {
         Position pos1 = request.getPosition1();
         Position pos2 = request.getPosition2();
-        if (!pos1.isValid()){ResponseEntity.badRequest().body("Invalid Position data");}
-        if (!pos2.isValid()){ResponseEntity.badRequest().body("Invalid Position data");}
-        double distance = calculateDistance(pos1, pos2);
-
-        return ResponseEntity.ok(distance < 0.00015);
+        return CalcCloseService.isCloseTo(pos1, pos2);
     }
 
     @PostMapping("/nextPosition")
-    public ResponseEntity<?> nextPosition (@RequestBody NextPositionRequest request) {
+    public Position nextPosition (@Valid @RequestBody NextPositionRequest request) {
         Position pos = request.getPosition();
-        if (!pos.isValid()){ResponseEntity.badRequest().body("Invalid Position data");}
         double angle = request.getAngle();
-        if (angle < 0 || angle > 360){ResponseEntity.badRequest().body("Invalid angle");}
 
-        double step = 0.00015;
-        double thetaRad = Math.toRadians(angle);
-
-        double nextLongitude = pos.getLng() + step * Math.cos(thetaRad);
-        double nextLatitude  = pos.getLat()  + step * Math.sin(thetaRad);
-
-        Position nextpos = new Position();
-        nextpos.setLat(nextLatitude);
-        nextpos.setLng(nextLongitude);
-
-        return (ResponseEntity.ok(nextpos));
+        return CalcNextPosService.nextPosition(pos, angle);
     }
 
     @PostMapping("/isInRegion ")
-    public ResponseEntity<?>  isInRegion  (@RequestBody RegionRequest request) {
+    public Boolean  isInRegion  (@Valid @RequestBody RegionRequest request) {
         Position pos = request.getPosition();
         Region region = request.getRegion();
-        if (!region.isValid()) {
-            return ResponseEntity.badRequest().body("Invalid region data");}
-        return ResponseEntity.ok(region.isIn(pos));
+        return CalcInRegionService.isInRegion(region, pos);
     }
 
 

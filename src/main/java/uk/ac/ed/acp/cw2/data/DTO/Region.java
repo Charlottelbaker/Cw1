@@ -1,10 +1,13 @@
-package uk.ac.ed.acp.cw2.DTO;
+package uk.ac.ed.acp.cw2.data.DTO;
+
+import jakarta.validation.constraints.AssertTrue;
+import jakarta.validation.constraints.NotNull;
 
 import java.util.List;
 
 public class Region {
-    private String name;
-    private List<Position> vertices;
+    @NotNull private String name;
+    @NotNull private List<Position> vertices;
 
     public Region() {
     }
@@ -27,25 +30,25 @@ public class Region {
         this.vertices = vertices;
     }
 
-    public boolean isValid() {
+    @AssertTrue(message = "Region must have at least 4 vertices, and the first and last must match")
+    public boolean isVerticesValid() {
         if (vertices == null || vertices.size() < 4) {
-            // Need at least 4 points because the last one must repeat the first
-            // and polygon needs at least 3 points
             return false;
         }
 
         Position first = vertices.getFirst();
         Position last = vertices.getLast();
 
-        if (Math.abs(first.getLat() - last.getLat()) > 1e-9 ||
-                Math.abs(first.getLng() - last.getLng()) > 1e-9) {
-            return false;}
-    return true;
+        // We only need ~0.00015 tolerance (same as your angle precision)
+        double tolerance = 0.00015;
+        boolean sameLat = Math.abs(first.getLat() - last.getLat()) < tolerance;
+        boolean sameLng = Math.abs(first.getLng() - last.getLng()) < tolerance;
+
+        return sameLat && sameLng;
     }
 
 
     public Boolean isIn(Position dronePos) {
-        if (!isValid()) {return null;}
         int num_intersections = 0;
         for (int i = 0; i < vertices.size(); i++) {
             Position v1 = vertices.get(i);

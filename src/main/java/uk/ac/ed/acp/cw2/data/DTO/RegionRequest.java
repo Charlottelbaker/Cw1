@@ -1,8 +1,11 @@
-package uk.ac.ed.acp.cw2.DTO;
+package uk.ac.ed.acp.cw2.data.DTO;
+
+import jakarta.validation.Valid;
+import jakarta.validation.constraints.NotNull;
 
 public class RegionRequest {
-    private Position position;
-    private Region region;
+    @NotNull @Valid private Position position;
+    @NotNull @Valid private Region region;
 
     public RegionRequest() {}
 

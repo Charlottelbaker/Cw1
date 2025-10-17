@@ -93,7 +93,7 @@ public class ServiceController {
         return CalcNextPosService.nextPosition(pos, angle);
     }
 
-    @PostMapping("/isInRegion ")
+    @PostMapping("/isInRegion")
     public Boolean  isInRegion  (@Valid @RequestBody RegionRequest request) {
         Position pos = request.getPosition();
         Region region = request.getRegion();

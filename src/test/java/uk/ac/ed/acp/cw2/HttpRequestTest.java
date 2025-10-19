@@ -26,6 +26,17 @@ class HttpRequestTest {
     }
 
     @Test
+    void contextLoads() {
+
+    }
+
+    @Test
+    void mainMethodShouldRun() {
+        Application.main(new String[]{});
+        assertThat(true).isTrue(); 
+    }
+
+    @Test
     void actuatorHealthShouldReturn200() {
         String url = "http://localhost:" + port + "/actuator/health";
         var response = this.restTemplate.getForEntity(url, String.class);

@@ -126,4 +126,18 @@ public class ServiceController {
     public List<String> query(@Valid @RequestBody List<QueryRequest> queries) {
         return myDroneService.queryDrones(queries);
     }
+
+    @PostMapping("queryAvailableDrones")
+    public List<String> queryAvailableDrones(@Valid @RequestBody List<MedDispatchRec> requests) {
+        return myDroneService.getDronesForMedRec(requests);
+    }
+    // gets a few medrecs and must find at least one drone capable of doing all of them
+    // first loop through medrecs and total 'weight'
+    // then for each service point calc total moves
+    // choose best service station and check get all drones, add to array
+    // loop through each medrec
+        // check availbility and requiremtns, remove from array if they dont match
+
+
+
 }

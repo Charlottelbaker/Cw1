@@ -7,7 +7,7 @@ import java.util.List;
 
 @Getter
 @Setter
-public class DroneForServicePoint {
+public class DronesForServicePoint {
     private int servicePointId;
     private List<AvailableDrone> drones;
 }

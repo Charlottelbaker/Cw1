@@ -1,6 +1,5 @@
 package uk.ac.ed.acp.cw2.service;
 
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestTemplate;
 import uk.ac.ed.acp.cw2.data.DTO.*;
@@ -19,9 +18,9 @@ public class DataService {
         return restTemplate.getForObject(baseUrl + "/drones", Drone[].class);
     }
 
-    public DroneForServicePoint[] getDronesForServicePoints() {
+    public DronesForServicePoint[] getDronesForServicePoints() {
         return restTemplate.getForObject(baseUrl + "/drones-for-service-points",
-                DroneForServicePoint[].class);
+                DronesForServicePoint[].class);
     }
 
     public RestrictedArea[] getRestrictedAreas() {

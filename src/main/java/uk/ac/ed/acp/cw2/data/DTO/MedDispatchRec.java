@@ -13,6 +13,7 @@ public class MedDispatchRec {
     private LocalDate date;
     private LocalTime time;
     private Requirements requirements;
+    private Position delivery;
 
     public MedDispatchRec() {}
 

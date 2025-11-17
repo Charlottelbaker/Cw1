@@ -33,7 +33,7 @@ class HttpRequestTest {
     @Test
     void mainMethodShouldRun() {
         Application.main(new String[]{});
-        assertThat(true).isTrue(); 
+        assertThat(true).isTrue();
     }
 
     @Test

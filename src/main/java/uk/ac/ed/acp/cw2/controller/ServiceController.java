@@ -138,6 +138,18 @@ public class ServiceController {
     // loop through each medrec
         // check availbility and requiremtns, remove from array if they dont match
 
+    @PostMapping("calcDeliveryPath")
+    public List<String> calcDeliveryPath(@Valid @RequestBody List<MedDispatchRec> requests) {
+        return myDroneService.getDronesForDeliveries(requests);
+    }
+    // gets a bunch of reqests, trys to find the most efficient way to deleiver them
+    // maybe before doing anything loop through them and group them into near by ones
+    // like get a ratio of nearness to group them
+    // and if they are all suffieceintly near they are all grouped
+    // also grouped nearness by day, like if they are difrent days obvs not near. do that first
+    // once i have groups - run avaible drones on them, see if  ther is a drone which can do it
+    // then once there is calc the path using a greedy algorithm to choose the next drone and u A* for the route
+    // need to consider no fly zones
 
 
 }

@@ -8,5 +8,5 @@ import lombok.Setter;
 public class ServicePoint {
     private int id;
     private String name;
-    private Position position;
+    private Position location;
 }

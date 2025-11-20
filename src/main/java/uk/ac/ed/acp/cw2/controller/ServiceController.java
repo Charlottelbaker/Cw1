@@ -129,7 +129,9 @@ public class ServiceController {
 
     @PostMapping("queryAvailableDrones")
     public List<String> queryAvailableDrones(@Valid @RequestBody List<MedDispatchRec> requests) {
-        return myDroneService.getDronesForMedRec(requests);
+        List<DroneCandidate> list = myDroneService.getDronesForMedRec(requests);
+        List<Drone> drones = list.stream().map(DroneCandidate::getDrone).toList();
+        return drones.stream().map(Drone::getId).toList();
     }
     // gets a few medrecs and must find at least one drone capable of doing all of them
     // first loop through medrecs and total 'weight'
@@ -138,10 +140,10 @@ public class ServiceController {
     // loop through each medrec
         // check availbility and requiremtns, remove from array if they dont match
 
-    @PostMapping("calcDeliveryPath")
-    public List<String> calcDeliveryPath(@Valid @RequestBody List<MedDispatchRec> requests) {
-        return myDroneService.getDronesForDeliveries(requests);
-    }
+//    @PostMapping("calcDeliveryPath")
+//    public List<String> calcDeliveryPath(@Valid @RequestBody List<MedDispatchRec> requests) {
+//        return myDroneService.getDronesForDeliveries(requests);
+//    }
     // gets a bunch of reqests, trys to find the most efficient way to deleiver them
     // maybe before doing anything loop through them and group them into near by ones
     // like get a ratio of nearness to group them

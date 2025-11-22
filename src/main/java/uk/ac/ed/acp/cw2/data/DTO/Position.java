@@ -19,6 +19,9 @@ public class Position {
 
     public Position() {}
 
+    public Position(Double lat, Double lng) {
+    }
+
     public Double getLat() { return lat; }
     public void setLat(Double lat) { this.lat = lat; }
 

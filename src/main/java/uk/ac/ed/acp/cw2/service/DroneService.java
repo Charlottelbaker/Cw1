@@ -14,10 +14,12 @@ public class DroneService {
 
     private final BasicService myService;
     private final DataService myDataService;
+    private final AStarService myRouter;
 
-    public DroneService(BasicService Service, DataService dataService) {
+    public DroneService(BasicService Service, DataService dataService, AStarService Astarservice) {
         this.myDataService = dataService;
         this.myService = Service;
+        this.myRouter = Astarservice;
     }
 
     public List<String> findDronesWithCooling(boolean state) {
@@ -307,8 +309,12 @@ public class DroneService {
                     getDronesAtServicePoint(sp.getId(), myDataService.getDronesForServicePoints()).getDrones();
             for (AvailableDrone ad : dronesAtSP) {
                 Drone drone = findDroneDetails(String.valueOf(ad.getId()));
+                if (drone == null) {
+                    System.err.println("ERROR: No drone found for AvailableDrone id=" + ad.getId());
+                }
                 if (canDroneHandleAllRequests(drone, ad, requests, sp)) {
                     candidates.add(new DroneCandidate(drone, ad, sp));
+                    System.out.println(drone.getId() + ad.getId() + sp);
                 }
             }
         }
@@ -406,12 +412,12 @@ public class DroneService {
             return total;
         }
 
-    private MedDispatchRec getClosest(List<MedDispatchRec> list, MedDispatchRec current) {
+    private MedDispatchRec getClosest(List<MedDispatchRec> list, Position current) {
         MedDispatchRec closest = null;
         double min = Double.MAX_VALUE;
 
         for (MedDispatchRec r : list) {
-            double d = myService.calculateDistance(current.getDelivery(), r.getDelivery());
+            double d = myService.calculateDistance(current, r.getDelivery());
             if (d < min) {
                 min = d;
                 closest = r;
@@ -446,7 +452,7 @@ public class DroneService {
 
             Requirements req = request.getRequirements();
 
-            // Capacity — PER request, not total
+            // Capacity total
             if (drone.getCapability().getCapacity() < req.getCapacity()) {
                 System.out.println(drone.getId());
                 System.out.println("capacity");
@@ -483,6 +489,7 @@ public class DroneService {
             if (!withinCostLimit(drone, req, moves, requestCount)) {
                 System.out.println(drone.getId());
                 System.out.println("coat");
+
                 return false;
             }
 
@@ -542,36 +549,42 @@ public class DroneService {
     // then once there is calc the path using a greedy algorithm to choose the next drone and u A* for the route
     // need to consider no fly zones
 
-    public List<DronePath> calcDeliveryPath(List<MedDispatchRec> requests) {
+    public DeliveryPath calcDeliveryPath(List<MedDispatchRec> requests) {
 
         List<List<MedDispatchRec>> clustersByDay = clusterByDay(requests);
-        List<List<MedDispatchRec>> finalClusters = new ArrayList<>();
+        List<Cluster> finalClusters =  new ArrayList<>();
 
-        int threshold = 100;
 
         for (List<MedDispatchRec> dailyCluster : clustersByDay) {
+            int threshold = 100;
+
+            System.out.println("daily cluster for loop");
 
             List<List<MedDispatchRec>> problems = new ArrayList<>();
             problems.add(dailyCluster);
 
             while (!problems.isEmpty() && threshold >= 0) {
+                System.out.println("problems isnt empty");
 
                 List<List<MedDispatchRec>> clusters = new ArrayList<>();
-
-                // Re-cluster all problematic groups
                 for (List<MedDispatchRec> group : problems) {
                     clusters.addAll(clusterByArea(group, threshold));
                 }
 
                 List<List<MedDispatchRec>> nextProblems = new ArrayList<>();
+                System.out.println("hello");
+
 
                 // Check if each new cluster has a usable drone
                 for (List<MedDispatchRec> c : clusters) {
 
+
                     List<DroneCandidate> drones = getDronesForMedRec(c);
+                    System.out.println(drones.toString());
 
                     if (!drones.isEmpty()) {
-                        finalClusters.add(c);
+                        Cluster cluster = new Cluster(c, drones.getFirst().getHomeSP().getLocation(), drones.getFirst().getDrone());
+                        finalClusters.add(cluster);
                     } else {
                         nextProblems.add(c);
                     }
@@ -581,32 +594,250 @@ public class DroneService {
                 threshold--;
             }
         }
+    //    h = sqrt ( (current_cell.x – goal.x)2 + (current_cell.y – goal.y)2 )
+        DeliveryPath deliveryPath = new  DeliveryPath();
+        deliveryPath.setDronePaths(new ArrayList<>());
 
-        // Continue to A* pathing etc…
-return null;
+        double totalMoves = 0;
+        double totalCost = 0;
+        for(Cluster cluster : finalClusters){
+            // for each cluster start at start point and greedy find closest drop off
+            // then run A* with that
+            // then go from that one to the next closest point ... until cluster is empty
+            Position start = cluster.getServicePoint();
+            Cluster clusterToDo = new Cluster(new ArrayList<>(cluster.getRequests()),
+                                                cluster.getServicePoint(), cluster.getDrone());
+            DronePath dronePath = new DronePath();
+            dronePath.setDroneId(Integer.parseInt(cluster.getDrone().getId()));
+            dronePath.setDeliveries(new ArrayList<>());
+            double moves = 0;
+
+            while(!clusterToDo.getRequests().isEmpty()){
+                System.out.println("while there are requests to pathfind");
+                Delivery delivery = new Delivery();
+                MedDispatchRec goal = getClosest(clusterToDo.getRequests(), clusterToDo.getServicePoint());
+                delivery.setDeliveryId(goal.getId());
+                List<Position> path = myRouter.findPath(start, goal.getDelivery(), myDataService.getRestrictedAreas());
+                moves += path.size();
+                if (!path.isEmpty()) {
+                    Position hover = path.getLast();
+                    path.add(hover);
+                }
+                delivery.setFlightPath(path);
+                start = goal.getDelivery();
+                clusterToDo.getRequests().remove(goal);
+                dronePath.getDeliveries().add(delivery);
+            }
+            List<Position> deliveryToAddTo = dronePath.getDeliveries().getLast().getFlightPath();
+            Position goal = clusterToDo.getServicePoint();
+            List<Position> path = myRouter.findPath(start, goal, myDataService.getRestrictedAreas());
+            moves += path.size();
+            deliveryToAddTo.addAll(path);
+            dronePath.getDeliveries().getLast().setFlightPath(deliveryToAddTo);
+            deliveryPath.getDronePaths().add(dronePath);
+            totalMoves += moves;
+            totalCost += cluster.getDrone().getCapability().getCostInitial()
+                    + cluster.getDrone().getCapability().getCostFinal()
+                    + (moves*cluster.getDrone().getCapability().getCostPerMove());
+        }
+        deliveryPath.setTotalCost(totalCost);
+        deliveryPath.setTotalMoves(totalMoves);
+
+
+       // we need to return “totalCost”: 1234.44, “totalMoves”: 12111, “dronePaths”:
+        // each drone path has “droneId”: 4, “deliveries": [ { “deliveryId”: 123, “flightPath”: [
+return deliveryPath;
     }
 
+//    public DeliveryPath calcDeliveryPath(List<MedDispatchRec> requests) {
+//        // Group by day (existing helper)
+//        List<List<MedDispatchRec>> clustersByDay = clusterByDay(requests);
+//
+//        DeliveryPath deliveryPath = new DeliveryPath();
+//        deliveryPath.setDronePaths(new ArrayList<>());
+//
+//        double totalMoves = 0;
+//        double totalCost = 0;
+//
+//        for (List<MedDispatchRec> dailyRequests : clustersByDay) {
+//
+//            // Work on a mutable copy of today's requests
+//            List<MedDispatchRec> remaining = new ArrayList<>(dailyRequests);
+//
+//            // While there are still requests to assign
+//            while (!remaining.isEmpty()) {
+//
+//                // Seed start: pick the request with the earliest time (or first in list)
+//                // You can change selection strategy (largest-demand first) if desired
+//                MedDispatchRec seed = remaining.get(0);
+//
+//                // Greedily grow cluster starting from seed
+//                List<MedDispatchRec> candidateCluster = new ArrayList<>();
+//                candidateCluster.add(seed);
+//
+//                boolean addedAny;
+//                do {
+//                    addedAny = false;
+//                    // Try to add each remaining request (except those already in candidateCluster)
+//                    for (MedDispatchRec r : new ArrayList<>(remaining)) {
+//                        if (candidateCluster.contains(r)) continue;
+//
+//                        List<MedDispatchRec> trial = new ArrayList<>(candidateCluster);
+//                        trial.add(r);
+//
+//                        // Use your existing helper to see if any drone can do this set
+//                        List<DroneCandidate> drones = getDronesForMedRec(trial);
+//
+//                        if (!drones.isEmpty()) {
+//                            // Accept r into the cluster (the trial is feasible)
+//                            candidateCluster.add(r);
+//                            addedAny = true;
+//                        }
+//                        // If no drone can handle the trial cluster, skip r
+//                    }
+//                    // repeat until no additions in a full pass
+//                } while (addedAny);
+//
+//                // At this point candidateCluster is maximal (greedily)
+//                // Confirm there exists at least one drone for this cluster
+//                List<DroneCandidate> clusterDrones = getDronesForMedRec(candidateCluster);
+//
+//                if (clusterDrones.isEmpty()) {
+//                    // Unlikely because we grew the cluster only when trials were feasible,
+//                    // but if happens (race or helper oddness) fall back to singletons
+//                    // Try to salvage by assigning the seed alone (or skip)
+//                    List<MedDispatchRec> one = Collections.singletonList(seed);
+//                    List<DroneCandidate> singleDrones = getDronesForMedRec(one);
+//                    if (singleDrones.isEmpty()) {
+//                        // cannot deliver this request by any drone; log and remove to avoid infinite loop
+//                        System.err.println("No drone can serve single request id=" + seed.getId() + "; skipping");
+//                        remaining.remove(seed);
+//                        continue;
+//                    } else {
+//                        candidateCluster = new ArrayList<>(one);
+//                        clusterDrones = singleDrones;
+//                    }
+//                }
+//
+//                // Choose the best drone candidate for the cluster.
+//                // Strategy: pick candidate with smallest estimated total route distance starting at its home SP.
+//                DroneCandidate bestCand = null;
+//                double bestScore = Double.POSITIVE_INFINITY;
+//                for (DroneCandidate cand : clusterDrones) {
+//                    ServicePoint home = cand.getHomeSP();
+//                    if (home == null || home.getLocation() == null) continue;
+//                    double dist = routeDistanceStartingAt(home.getLocation(), candidateCluster);
+//                    if (dist < bestScore) {
+//                        bestScore = dist;
+//                        bestCand = cand;
+//                    }
+//                }
+//                if (bestCand == null) {
+//                    // fallback to first
+//                    bestCand = clusterDrones.get(0);
+//                }
+//
+//                // Build Cluster object using your Cluster ctor (requests, servicePoint, drone)
+//                Cluster assignedCluster = new Cluster(candidateCluster, bestCand.getHomeSP().getLocation(), bestCand.getDrone());
+//                // Create DronePath DTO
+//                DronePath dronePath = new DronePath();
+//                try {
+//                    dronePath.setDroneId(Integer.parseInt(bestCand.getDrone().getId()));
+//                } catch (Exception ex) {
+//                    // If ID parsing fails, use -1 as fallback
+//                    dronePath.setDroneId(-1);
+//                }
+//                dronePath.setDeliveries(new ArrayList<>());
+//
+//                // Now create route for this cluster: start at service point, visit greedily nearest neighbour
+//                Position currentPos = assignedCluster.getServicePoint();
+//                List<MedDispatchRec> toDeliver = new ArrayList<>(assignedCluster.getRequests());
+//                double movesForThisDrone = 0;
+//
+//                while (!toDeliver.isEmpty()) {
+//                    MedDispatchRec next = getClosest(toDeliver, currentPos);
+//                    if (next == null) break; // defensive
+//
+//                    Delivery deliveryDto = new Delivery();
+//                    deliveryDto.setDeliveryId(next.getId());
+//
+//                    // Call your router (keeps same signature you used before)
+//                    List<Position> flightPath = myRouter.findPath(currentPos, next.getDelivery(), myDataService.getRestrictedAreas());
+//
+//                    // Add hover (two identical entries) to signal delivery
+//                    if (!flightPath.isEmpty()) {
+//                        Position hover = flightPath.get(flightPath.size() - 1);
+//                        flightPath.add(new Position(hover.getLat(), hover.getLng()));
+//                    } else {
+//                        // If router returned empty path (shouldn't), still create hover at target
+//                        Position hover = new Position();
+//                        hover.setLat(next.getDelivery().getLat());
+//                        hover.setLng(next.getDelivery().getLng());
+//                        flightPath.add(hover);
+//                        flightPath.add(new Position(hover.getLat(), hover.getLng()));
+//                    }
+//
+//                    deliveryDto.setFlightPath(flightPath);
+//                    dronePath.getDeliveries().add(deliveryDto);
+//
+//                    movesForThisDrone += flightPath.size();
+//
+//                    // advance currentPos and remove delivered rec
+//                    currentPos = next.getDelivery();
+//                    toDeliver.remove(next);
+//                }
+//
+//                // After finishing deliveries, return to service point
+//                Delivery returnDelivery = new Delivery();
+//                returnDelivery.setDeliveryId(0); // sentinel for return-home
+//                List<Position> returnPath = myRouter.findPath(currentPos, assignedCluster.getServicePoint(), myDataService.getRestrictedAreas());
+//                // ensure hover at service point to mark termination
+//                if (!returnPath.isEmpty()) {
+//                    Position hover = returnPath.get(returnPath.size() - 1);
+//                    returnPath.add(new Position(hover.getLat(), hover.getLng()));
+//                } else {
+//                    Position hover = new Position();
+//                    hover.setLat(assignedCluster.getServicePoint().getLat());
+//                    hover.setLng(assignedCluster.getServicePoint().getLng());
+//                    returnPath.add(hover);
+//                    returnPath.add(new Position(hover.getLat(), hover.getLng()));
+//                }
+//                returnDelivery.setFlightPath(returnPath);
+//                dronePath.getDeliveries().add(returnDelivery);
+//
+//                movesForThisDrone += returnPath.size();
+//
+//                // Add drone path to overall result
+//                deliveryPath.getDronePaths().add(dronePath);
+//
+//                // Update totals
+//                totalMoves += movesForThisDrone;
+//                totalCost += bestCand.getDrone().getCapability().getCostInitial()
+//                        + bestCand.getDrone().getCapability().getCostFinal()
+//                        + (movesForThisDrone * bestCand.getDrone().getCapability().getCostPerMove());
+//
+//                // Remove assigned requests from the remaining pool
+//                remaining.removeAll(candidateCluster);
+//            }
+//        }
+//
+//        deliveryPath.setTotalMoves(totalMoves);
+//        deliveryPath.setTotalCost(totalCost);
+//
+//        return deliveryPath;
+//    }
 
-    private List<List<MedDispatchRec>> clusterByDay(List<MedDispatchRec> requests) {
-        List<List<MedDispatchRec>> clusters = new ArrayList<>();
-        if (requests.isEmpty()) return clusters;
 
-        LocalDate currentDate = requests.get(0).getDate();
-        List<MedDispatchRec> currentCluster = new ArrayList<>();
-        clusters.add(currentCluster);
 
-        for (MedDispatchRec rec : requests) {
-            if (rec.getDate().equals(currentDate)) {
-                currentCluster.add(rec);
-            } else {
-                currentDate = rec.getDate();
-                currentCluster = new ArrayList<>();
-                clusters.add(currentCluster);
-                currentCluster.add(rec);
-            }
+    public List<List<MedDispatchRec>> clusterByDay(List<MedDispatchRec> requests) {
+        Map<LocalDate, List<MedDispatchRec>> byDay = new HashMap<>();
+
+        for (MedDispatchRec r : requests) {
+            LocalDate date = r.getDate(); // make sure r.getDate() returns LocalDate
+            byDay.computeIfAbsent(date, k -> new ArrayList<>()).add(r);
         }
 
-        return clusters;
+        return new ArrayList<>(byDay.values());
     }
 
     // get the distance between all of them and if its below a certain throshold they are all together
@@ -644,7 +875,7 @@ return null;
 
             while (!copy.isEmpty()) {
 
-                MedDispatchRec next = getClosest(copy, current);
+                MedDispatchRec next = getClosest(copy, current.getDelivery());
                 double distance = myService.calculateDistance(
                         current.getDelivery(),
                         next.getDelivery()
@@ -668,7 +899,123 @@ return null;
     }
 
 
+    public Map<String, Object> calcDeliveryPathAsGeoJson(List<MedDispatchRec> requests) {
+        if (requests.isEmpty()) {
+            return Map.of(
+                    "type", "LineString",
+                    "coordinates", Collections.emptyList()
+            );
+        }
 
+        // Pick the best service point
+        ServicePoint sp = findBestServicePoint(requests);
+        Position start = sp.getLocation();
+
+        List<Position> path = new ArrayList<>();
+        path.add(start); // start at service point
+
+        List<MedDispatchRec> remaining = new ArrayList<>(requests);
+        Position current = start;
+
+        // Greedy delivery order
+        while (!remaining.isEmpty()) {
+            MedDispatchRec next = getClosest(remaining, current);
+            List<Position> segment = myRouter.findPath(current, next.getDelivery(), myDataService.getRestrictedAreas());
+            path.addAll(segment);
+
+            // Hover at delivery (duplicate last position)
+            if (!segment.isEmpty()) path.add(segment.get(segment.size() - 1));
+
+            current = next.getDelivery();
+            remaining.remove(next);
+        }
+
+        // Return to service point
+        List<Position> backHome = myRouter.findPath(current, start, myDataService.getRestrictedAreas());
+        path.addAll(backHome);
+
+        // Convert to GeoJSON coordinates [lng, lat]
+        List<List<Double>> coords = path.stream()
+                .map(p -> List.of(p.getLng(), p.getLat()))
+                .toList();
+
+        return Map.of(
+                "type", "LineString",
+                "coordinates", coords
+        );
+    }
+    public String buildGeoJson(DeliveryPath deliveryPath) {
+
+        StringBuilder sb = new StringBuilder();
+        sb.append("{\"type\":\"FeatureCollection\",\"features\":[");
+
+        boolean firstFeature = true;
+        int clusterIndex = 0;
+
+        for (DronePath dronePath : deliveryPath.getDronePaths()) {
+
+            // Each cluster/dronePath gets its own LineString
+            List<String> lineCoords = new ArrayList<>();
+
+            for (Delivery delivery : dronePath.getDeliveries()) {
+
+                List<Position> path = delivery.getFlightPath();
+                if (path == null || path.isEmpty()) continue;
+
+                for (int i = 0; i < path.size(); i++) {
+                    Position pos = path.get(i);
+
+                    // Add coordinate to cluster linestring
+                    lineCoords.add("[" + pos.getLng() + "," + pos.getLat() + "]");
+
+                    // ----- HOVER DETECTION (duplicate coordinate) -----
+                    if (i > 0) {
+                        Position prev = path.get(i - 1);
+                        if (prev.getLat() == pos.getLat() &&
+                                prev.getLng() == pos.getLng()) {
+
+                            if (!firstFeature) sb.append(",");
+                            firstFeature = false;
+
+                            // Add hover marker feature
+                            sb.append("{")
+                                    .append("\"type\":\"Feature\",")
+                                    .append("\"properties\":{")
+                                    .append("\"type\":\"hover\",")
+                                    .append("\"droneId\":").append(dronePath.getDroneId()).append(",")
+                                    .append("\"deliveryId\":").append(delivery.getDeliveryId())
+                                    .append("},")
+                                    .append("\"geometry\":{")
+                                    .append("\"type\":\"Point\",")
+                                    .append("\"coordinates\":[").append(pos.getLng()).append(",").append(pos.getLat()).append("]")
+                                    .append("}")
+                                    .append("}");
+                        }
+                    }
+                }
+            }
+
+            // ----- CLUSTER LINESTRING (ONE PER DRONE PATH) -----
+            if (!firstFeature) sb.append(",");
+            firstFeature = false;
+
+            sb.append("{")
+                    .append("\"type\":\"Feature\",")
+                    .append("\"properties\":{")
+                    .append("\"type\":\"flight\",")
+                    .append("\"droneId\":").append(dronePath.getDroneId()).append(",")
+                    .append("\"clusterIndex\":").append(clusterIndex++)
+                    .append("},")
+                    .append("\"geometry\":{")
+                    .append("\"type\":\"LineString\",")
+                    .append("\"coordinates\":[").append(String.join(",", lineCoords)).append("]")
+                    .append("}")
+                    .append("}");
+        }
+
+        sb.append("]}");
+        return sb.toString();
+    }
 
 
 

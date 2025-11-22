@@ -10,5 +10,9 @@ public class DroneCandidate {
     private ServicePoint homeSP;
 
     public DroneCandidate(Drone drone, AvailableDrone ad, ServicePoint sp) {
+        this.drone = drone;
+        this.availableDrone = ad;
+        this.homeSP = sp;
     }
+
 }

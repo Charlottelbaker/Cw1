@@ -14,6 +14,7 @@ import uk.ac.ed.acp.cw2.service.DroneService;
 
 import java.net.URL;
 import java.util.List;
+import java.util.Map;
 
 /**
  * Controller class that handles various HTTP endpoints for the application.
@@ -133,17 +134,12 @@ public class ServiceController {
         List<Drone> drones = list.stream().map(DroneCandidate::getDrone).toList();
         return drones.stream().map(Drone::getId).toList();
     }
-    // gets a few medrecs and must find at least one drone capable of doing all of them
-    // first loop through medrecs and total 'weight'
-    // then for each service point calc total moves
-    // choose best service station and check get all drones, add to array
-    // loop through each medrec
-        // check availbility and requiremtns, remove from array if they dont match
 
-//    @PostMapping("calcDeliveryPath")
-//    public List<String> calcDeliveryPath(@Valid @RequestBody List<MedDispatchRec> requests) {
-//        return myDroneService.getDronesForDeliveries(requests);
-//    }
+
+    @PostMapping("calcDeliveryPath")
+    public DeliveryPath calcDeliveryPath(@Valid @RequestBody List<MedDispatchRec> requests) {
+        return myDroneService.calcDeliveryPath(requests);
+    }
     // gets a bunch of reqests, trys to find the most efficient way to deleiver them
     // maybe before doing anything loop through them and group them into near by ones
     // like get a ratio of nearness to group them
@@ -152,6 +148,15 @@ public class ServiceController {
     // once i have groups - run avaible drones on them, see if  ther is a drone which can do it
     // then once there is calc the path using a greedy algorithm to choose the next drone and u A* for the route
     // need to consider no fly zones
+    @PostMapping("/calcDeliveryPathAsGeoJson")
+    public Map<String, Object> calcDeliveryPathAsGeoJson(@RequestBody List<MedDispatchRec> requests) {
+        return myDroneService.calcDeliveryPathAsGeoJson(requests);
+    }
+
+    @PostMapping("/betterJson")
+    public String betterJson(@RequestBody DeliveryPath path) {
+        return myDroneService.buildGeoJson(path);
+    }
 
 
 }

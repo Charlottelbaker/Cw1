@@ -68,7 +68,7 @@ public class AStarService {
         Set<String> closed = new HashSet<>();
 
         while (!open.isEmpty()) {
-            System.out.println("open isnt empty");
+           // System.out.println("open isnt empty");
 
             Node current = open.poll();
             String currKey = key(current.pos);

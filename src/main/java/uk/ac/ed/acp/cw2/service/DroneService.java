@@ -305,6 +305,7 @@ public class DroneService {
         List<DroneCandidate> candidates = new ArrayList<>();
 
         for (ServicePoint sp : allServicePoints) {
+            System.out.println(sp.getName() + " service point");
             List<AvailableDrone> dronesAtSP =
                     getDronesAtServicePoint(sp.getId(), myDataService.getDronesForServicePoints()).getDrones();
             for (AvailableDrone ad : dronesAtSP) {
@@ -314,7 +315,7 @@ public class DroneService {
                 }
                 if (canDroneHandleAllRequests(drone, ad, requests, sp)) {
                     candidates.add(new DroneCandidate(drone, ad, sp));
-                    System.out.println(drone.getId() + ad.getId() + sp);
+                    System.out.println(drone.getName() + sp.getName() + "\n");
                 }
             }
         }
@@ -429,40 +430,94 @@ public class DroneService {
 
 
 
-    private boolean canDroneHandleAllRequests(Drone drone,
-                                                  AvailableDrone availableDrone,
-                                                  List<MedDispatchRec> requests,
-                                                  ServicePoint sp) {
+    private boolean canDroneHandleAllRequests(Drone drone, AvailableDrone availableDrone,
+                                              List<MedDispatchRec> requests, ServicePoint sp) {
 
-            for (MedDispatchRec req : requests) {
-                double moves = calculateMoves(sp.getLocation(), req.getDelivery());
-                if (!isDroneSuitableForSingleReq(req, drone, availableDrone, moves, requests.size())) {
-                    return false;
-                }
-            }
-            return true;
+        if (requests == null || requests.isEmpty()) {
+            return true; // nothing to do
         }
+
+        // --- ALL-IN-ONE TRIP: build greedy route, sum moves and capacity ---
+        double totalMovesAllInOne = 0.0;
+        double totalCapacityAllInOne = 0.0;
+
+        List<MedDispatchRec> copy = new ArrayList<>(requests);
+        Position prev = sp.getLocation();
+
+        while (!copy.isEmpty()) {
+            MedDispatchRec closest = getClosest(copy, prev);
+            totalMovesAllInOne += calculateMoves(prev, closest.getDelivery());
+            prev = closest.getDelivery();
+            copy.remove(closest);
+        }
+        // include return leg to service point (so it's a complete trip)
+        totalMovesAllInOne += calculateMoves(prev, sp.getLocation());
+
+        // sum capacities for all requests
+        for (MedDispatchRec r : requests) {
+            totalCapacityAllInOne += r.getRequirements().getCapacity();
+        }
+
+        // Check: ALL requests must be OK when considering the full-trip parameters
+        boolean allInOneOk = true;
+        for (MedDispatchRec r : requests) {
+            // use totalMovesAllInOne, totalCapacityAllInOne and total request count
+            if (!isDroneSuitableForSingleReq(r, drone, availableDrone,
+                    totalMovesAllInOne,
+                    requests.size(),
+                    totalCapacityAllInOne)) {
+                allInOneOk = false;
+                break;
+            }
+        }
+
+        // --- MULTI-TRIP: each request is a separate trip from/to service point ---
+        boolean multiTripOk = true;
+        for (MedDispatchRec r : requests) {
+            // moves for a single-request trip: SP -> req -> SP
+            double movesSingleTrip = calculateMoves(sp.getLocation(), r.getDelivery())
+                    + calculateMoves(r.getDelivery(), sp.getLocation());
+            double capacitySingle = r.getRequirements().getCapacity();
+
+            // For single-trip checks, pass count=1 and capacity=capacitySingle
+            if (!isDroneSuitableForSingleReq(r, drone, availableDrone,
+                    movesSingleTrip,
+                    1,
+                    capacitySingle)) {
+                multiTripOk = false;
+                break;
+            }
+        }
+
+        // Return true if at least one of the two options is entirely feasible
+        return allInOneOk || multiTripOk;
+    }
+
+
+
 
 
         private boolean isDroneSuitableForSingleReq(MedDispatchRec request,
                                                     Drone drone,
                                                     AvailableDrone availableDrone,
                                                     double moves,
-                                                    int requestCount) {
+                                                    int requestCount,
+                                                    double capacity) {
 
             Requirements req = request.getRequirements();
 
             // Capacity total
-            if (drone.getCapability().getCapacity() < req.getCapacity()) {
+            if (drone.getCapability().getCapacity() < capacity) {
                 System.out.println(drone.getId());
-                System.out.println("capacity");
+                System.out.println("capacity =" + capacity + "but this drone has " + drone.getCapability().getCapacity());
                 return false;
             }
 
             // Moves
+            //System.out.println("yay moves =" + moves + "and this drone has " + drone.getCapability().getMaxMoves());
             if (drone.getCapability().getMaxMoves() < moves) {
                 System.out.println(drone.getId());
-                System.out.println("moves");
+                System.out.println("moves =" + moves + "but this drone has " + drone.getCapability().getMaxMoves());
                 return false;
             }
 
@@ -488,7 +543,7 @@ public class DroneService {
             // Cost
             if (!withinCostLimit(drone, req, moves, requestCount)) {
                 System.out.println(drone.getId());
-                System.out.println("coat");
+                System.out.println("cost");
 
                 return false;
             }
@@ -500,19 +555,33 @@ public class DroneService {
         private double calculateDistance(Position p1, Position p2) {
             double dx = p1.getLat() - p2.getLat();
             double dy = p1.getLng() - p2.getLng();
+            System.out.println(Math.sqrt(dx * dx + dy * dy));
             return Math.sqrt(dx * dx + dy * dy);
         }
 
-        private double calculateMoves(Position p1, Position p2) {
+        private double calculateMovesbad(Position p1, Position p2) {
+            System.out.println(calculateDistance(p1, p2) / STEP_SIZE);
             return calculateDistance(p1, p2) / STEP_SIZE;
         }
 
-        private boolean withinCostLimit(Drone drone, Requirements req, double moves, int reqCount) {
+        private double calculateMoves(Position p1, Position p2) {
+            double stepSize = 0.00015;
+
+            double dLat = Math.abs(p1.getLat() - p2.getLat());
+            double dLng = Math.abs(p1.getLng() - p2.getLng());
+
+            int stepsLat = (int)Math.round(dLat / stepSize);
+            int stepsLng = (int)Math.round(dLng / stepSize);
+
+            return Math.max(stepsLat, stepsLng);
+        }
+
+
+    private boolean withinCostLimit(Drone drone, Requirements req, double moves, int reqCount) {
             if (req.getMaxCost() == null) return true;
             double total = drone.getCapability().getCostInitial()
                     + drone.getCapability().getCostFinal()
                     + (moves * drone.getCapability().getCostPerMove());
-
             double perDispatch = total / reqCount;
             return perDispatch <= req.getMaxCost();
         }
@@ -600,7 +669,9 @@ public class DroneService {
 
         double totalMoves = 0;
         double totalCost = 0;
+        System.out.println("there are " + finalClusters.size() + " clusters");
         for(Cluster cluster : finalClusters){
+            System.out.println("starting a path for this cluster");
             // for each cluster start at start point and greedy find closest drop off
             // then run A* with that
             // then go from that one to the next closest point ... until cluster is empty
@@ -613,10 +684,10 @@ public class DroneService {
             double moves = 0;
 
             while(!clusterToDo.getRequests().isEmpty()){
-                System.out.println("while there are requests to pathfind");
                 Delivery delivery = new Delivery();
                 MedDispatchRec goal = getClosest(clusterToDo.getRequests(), clusterToDo.getServicePoint());
                 delivery.setDeliveryId(goal.getId());
+                System.out.println("path find for");
                 List<Position> path = myRouter.findPath(start, goal.getDelivery(), myDataService.getRestrictedAreas());
                 moves += path.size();
                 if (!path.isEmpty()) {

@@ -97,7 +97,11 @@ public class DroneService {
 
     private boolean compareBoolean(boolean droneValue, String operator, String value) {
         boolean v = Boolean.parseBoolean(value);
-        return "=".equals(operator) && droneValue == v;
+        return switch (operator) {
+            case "=" -> droneValue == v;
+            case "!=" -> droneValue != v;
+            default -> false;
+        };
     }
 
     private boolean compareDouble(double droneValue, String operator, String value) {
@@ -113,6 +117,8 @@ public class DroneService {
                 return droneValue <= v;
             case ">=":
                 return droneValue >= v;
+            case "!=":
+                return droneValue != v;
             default:
                 return false;
         }

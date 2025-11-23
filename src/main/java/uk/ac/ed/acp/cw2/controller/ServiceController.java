@@ -97,18 +97,18 @@ public class ServiceController {
         return myService.isInRegion(region, pos);
     }
 
-    @GetMapping("/droneswithcooling/{state}")
+    @GetMapping("/dronesWithCooling/{state}")
     public List<String> dronesWithCooling(@PathVariable boolean state) {
         return myDroneService.findDronesWithCooling(state);
     }
 
-    @GetMapping("/droneswithheating/{state}")
+    @GetMapping("/dronesWithHeating/{state}")
     public List<String> dronesWithHeating(@PathVariable boolean state) {
         return myDroneService.findDronesWithHeating(state);
     }
 
 
-    @GetMapping("/dronedetails/{id}")
+    @GetMapping("/droneDetails/{id}")
     public Drone droneDetails(@PathVariable String id) {
         Drone result = myDroneService.findDroneDetails(id);
         if (result == null) {

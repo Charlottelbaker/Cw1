@@ -308,7 +308,6 @@ private boolean canHandleAllInOneTrip(Drone drone, AvailableDrone availableDrone
     double totalMoves = 0.0;
     double totalCapacity = 0.0;
 
-    // Greedy ordering to simulate route
     List<MedDispatchRec> copy = new ArrayList<>(requests);
     Position prev = sp.getLocation();
 
@@ -322,12 +321,10 @@ private boolean canHandleAllInOneTrip(Drone drone, AvailableDrone availableDrone
     // Return to SP
     totalMoves += calculateMoves(prev, sp.getLocation());
 
-    // Combined capacity
     for (MedDispatchRec r : requests) {
         totalCapacity += r.getRequirements().getCapacity();
     }
 
-    // Every req must be valid under the "all in one" constraints
     for (MedDispatchRec r : requests) {
         if (!isDroneSuitableForSingleReq(
                 r, drone, availableDrone,
@@ -353,7 +350,6 @@ private boolean canHandleAllInOneTrip(Drone drone, AvailableDrone availableDrone
 
             double capacity = r.getRequirements().getCapacity();
 
-            // If any single request fails its own trip -> cannot multitrip
             if (!isDroneSuitableForSingleReq(
                     r, drone, availableDrone,
                     moves,
@@ -677,48 +673,19 @@ private boolean canHandleAllInOneTrip(Drone drone, AvailableDrone availableDrone
 
         for (DronePath dronePath : deliveryPath.getDronePaths()) {
 
-            // Each cluster/dronePath gets its own LineString
+            // Collect all flight coordinates for this cluster
             List<String> lineCoords = new ArrayList<>();
 
             for (Delivery delivery : dronePath.getDeliveries()) {
-
                 List<Position> path = delivery.getFlightPath();
                 if (path == null || path.isEmpty()) continue;
 
-                for (int i = 0; i < path.size(); i++) {
-                    Position pos = path.get(i);
-
-                    // Add coordinate to cluster linestring
+                for (Position pos : path) {
                     lineCoords.add("[" + pos.getLng() + "," + pos.getLat() + "]");
-
-                    // ----- HOVER DETECTION (duplicate coordinate) -----
-                    if (i > 0) {
-                        Position prev = path.get(i - 1);
-                        if (prev.getLat() == pos.getLat() &&
-                                prev.getLng() == pos.getLng()) {
-
-                            if (!firstFeature) sb.append(",");
-                            firstFeature = false;
-
-                            // Add hover marker feature
-                            sb.append("{")
-                                    .append("\"type\":\"Feature\",")
-                                    .append("\"properties\":{")
-                                    .append("\"type\":\"hover\",")
-                                    .append("\"droneId\":").append(dronePath.getDroneId()).append(",")
-                                    .append("\"deliveryId\":").append(delivery.getDeliveryId())
-                                    .append("},")
-                                    .append("\"geometry\":{")
-                                    .append("\"type\":\"Point\",")
-                                    .append("\"coordinates\":[").append(pos.getLng()).append(",").append(pos.getLat()).append("]")
-                                    .append("}")
-                                    .append("}");
-                        }
-                    }
                 }
             }
 
-            // ----- CLUSTER LINESTRING (ONE PER DRONE PATH) -----
+            // Add LineString feature for this drone path
             if (!firstFeature) sb.append(",");
             firstFeature = false;
 
@@ -739,8 +706,6 @@ private boolean canHandleAllInOneTrip(Drone drone, AvailableDrone availableDrone
         sb.append("]}");
         return sb.toString();
     }
-
-
 
 
 }
